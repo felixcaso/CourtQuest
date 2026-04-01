@@ -1,0 +1,68 @@
+CourtQuest — Ideas & Future Updates
+=====================================
+
+[ ] = To Do   [x] = Done   [~] = In Progress
+
+
+
+
+--- General updates---
+
+
+--- COURTQUEST ---
+[ ] display court photos
+[ ] Court photos submitted by players
+
+--- CONTROL ---
+
+
+
+
+Do not do any updates below here. 
+
+
+--- COURTS ---
+[ ] Add more cities beyond NYC
+[ ] Court photos submitted by players
+[ ] Court condition ratings (surface, net quality)
+[ ] Real-time "I'm here" check-ins per court
+[ ] Court availability — mark courts as busy/open
+[ ] Directions button (open in Apple Maps / Google Maps)
+[ ] Favorite courts
+
+--- KING OF THE COURT ---
+[ ] Real challenge system (send/accept challenges)
+[ ] Challenge history and win/loss record
+[ ] Weekly/monthly king resets
+[ ] King streak counter
+[ ] Notification when your court is challenged
+
+--- COMMUNITY ---
+[ ] Real backend for posts (Firebase)
+[ ] Comments on posts
+[ ] Direct messaging between players
+[ ] Player skill level tags (Beginner / Intermediate / Pro)
+[ ] Game scheduling — create/join open games
+
+--- PROFILE ---
+[ ] Profile photo
+[ ] Badges and achievements (e.g. "Court Regular", "Upset King")
+[ ] Match history log
+[ ] Stats over time
+
+--- VERSAPRO INTEGRATION ---
+[ ] Bluetooth machine control (live)
+[ ] Drill session logging from machine
+[ ] Recommended drills based on skill level
+[ ] Share drill stats to community feed
+
+--- MONETIZATION ---
+[ ] Pro subscription (RevenueCat)
+[ ] Unlimited court claims for Pro users
+[ ] Ad-free experience for Pro
+
+--- MISC ---
+[ ] Push notifications
+[ ] Dark/light mode toggle
+[ ] Onboarding flow for new users
+[ ] App icon and splash screen design

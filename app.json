@@ -4,7 +4,7 @@
     "slug": "CourtQuest",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/VS.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": false,
     "splash": {
@@ -15,8 +15,10 @@
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "CourtQuest uses your location to show courts near you."
-      }
+        "NSLocationWhenInUseUsageDescription": "CourtQuest uses your location to show courts near you and track courts you've visited.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "CourtQuest uses your location to track courts you've visited nearby."
+      },
+      "bundleIdentifier": "com.anonymous.CourtQuest"
     },
     "android": {
       "adaptiveIcon": {
@@ -26,7 +28,20 @@
     },
     "plugins": [
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "CourtQuest needs access to your photos to set a profile picture."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "CourtQuest uses your location to track courts you've visited nearby.",
+          "locationAlwaysAndWhenInUsePermission": "CourtQuest uses your location to track courts you've visited nearby."
+        }
+      ]
     ]
   }
 }
