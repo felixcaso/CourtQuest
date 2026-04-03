@@ -2,9 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, View, Text, Modal, Image,
   TouchableOpacity, SafeAreaView, ScrollView,
+  Linking, Platform,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as Location from 'expo-location';
+import { db } from '../firebase';
+import {
+  doc, getDoc, setDoc, onSnapshot, updateDoc, deleteDoc,
+  collection, serverTimestamp, arrayUnion, arrayRemove, increment,
+} from 'firebase/firestore';
+import { awardXP } from '../services/xpService';
 
 const COURTS = [
   { id: '1', name: 'Central Park Pickleball', address: 'Central Park, NY 10024', courts: 4, lat: 40.7812, lng: -73.9665 },
@@ -34,19 +41,7 @@ const COURTS = [
   { id: '25', name: 'Concrete Plant Park', address: 'Concrete Plant Park, Bronx, NY 10472', courts: 2, lat: 40.8189, lng: -73.8795 },
 ];
 
-// King of the Court data
-const KINGS = {
-  '1':  { name: 'Jonathan Martin', initials: 'JM', wins: 18, since: 'Jan 2026' },
-  '3':  { name: 'Jonathan Martin', initials: 'JM', wins: 15, since: 'Feb 2026' },
-  '7':  { name: 'Jonathan Martin', initials: 'JM', wins: 12, since: 'Mar 2026' },
-  '8':  { name: 'Jonathan Martin', initials: 'JM', wins: 9,  since: 'Mar 2026' },
-  '15': { name: 'Jonathan Martin', initials: 'JM', wins: 7,  since: 'Mar 2026' },
-  '21': { name: 'Felix Caso', initials: 'FC', wins: 10, since: 'Apr 2026' },
-  '22': { name: 'Felix Caso', initials: 'FC', wins: 8,  since: 'Apr 2026' },
-  '23': { name: 'Felix Caso', initials: 'FC', wins: 9,  since: 'Apr 2026' },
-  '24': { name: 'Felix Caso', initials: 'FC', wins: 7,  since: 'Apr 2026' },
-  '25': { name: 'Felix Caso', initials: 'FC', wins: 6,  since: 'Apr 2026' },
-};
+// KINGS is now loaded from Firestore in real-time (see component state)
 
 // Avatar color array (same as ProfileScreen)
 const AVATAR_COLORS = ['#F5961D', '#4ADE80', '#818CF8', '#F472B6', '#38BDF8'];
@@ -67,43 +62,44 @@ function getDistance(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Leaderboard mock data per court
-function getLeaderboard(courtId) {
-  const king = KINGS[courtId];
-
-  if (courtId === '7') {
-    return [
-      { rank: 1, name: 'Jonathan Martin', initials: 'JM', wins: 12 },
-      { rank: 2, name: 'Marcus Lee',      initials: 'ML', wins: 8 },
-      { rank: 3, name: 'Priya Sharma',    initials: 'PS', wins: 5 },
-    ];
-  }
-
-  if (['21', '22', '23', '24', '25'].includes(courtId)) {
-    return [
-      { rank: 1, name: 'Felix Caso',   initials: 'FC', wins: king.wins },
-      { rank: 2, name: 'Player Two',   initials: 'P2', wins: 4 },
-      { rank: 3, name: 'Player Three', initials: 'P3', wins: 2 },
-    ];
-  }
-
+// Leaderboard — shows king at top if present
+function getLeaderboard(courtId, kings) {
+  const king = kings[courtId];
   if (king) {
     return [
-      { rank: 1, name: 'Jonathan Martin', initials: 'JM', wins: king.wins },
-      { rank: 2, name: 'Player Two',      initials: 'P2', wins: 4 },
-      { rank: 3, name: 'Player Three',    initials: 'P3', wins: 2 },
+      { rank: 1, name: king.name, initials: king.initials, wins: king.wins || 1 },
+      { rank: 2, name: 'Player Two',   initials: 'P2', wins: 0 },
+      { rank: 3, name: 'Player Three', initials: 'P3', wins: 0 },
     ];
   }
   return [
-    { rank: 1, name: 'Player One',   initials: 'P1', wins: 7 },
-    { rank: 2, name: 'Player Two',   initials: 'P2', wins: 4 },
-    { rank: 3, name: 'Player Three', initials: 'P3', wins: 2 },
+    { rank: 1, name: 'Player One',   initials: 'P1', wins: 0 },
+    { rank: 2, name: 'Player Two',   initials: 'P2', wins: 0 },
+    { rank: 3, name: 'Player Three', initials: 'P3', wins: 0 },
   ];
 }
 
 const RANK_COLORS = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' };
 
-const mapHTML = `
+function buildMapHTML(kings, userCrewId) {
+  // Build marker data: for each court, determine color based on claim status
+  // unclaimed = orange, claimed by user's crew = green, claimed by rival = red
+  const markerData = COURTS.map(c => {
+    const king = kings[c.id];
+    let color = '#F5961D'; // unclaimed = orange
+    let crewLabel = '';
+    if (king) {
+      if (userCrewId && king.crewId === userCrewId) {
+        color = '#4ADE80'; // user's crew = green
+      } else {
+        color = '#EF4444'; // rival = red
+      }
+      crewLabel = king.crewName || '';
+    }
+    return { ...c, color, crewLabel, claimed: !!king };
+  });
+
+  return `
 <!DOCTYPE html>
 <html>
 <head>
@@ -117,6 +113,7 @@ const mapHTML = `
     .leaflet-control-zoom { border: none !important; }
     .leaflet-control-zoom a { background: #0C1A36 !important; color: #F5961D !important; border: 1px solid rgba(245,150,29,0.3) !important; font-weight: 800 !important; }
     .leaflet-control-zoom a:hover { background: rgba(245,150,29,0.15) !important; }
+    .crew-label { font-size: 9px; font-weight: 800; color: #fff; text-align: center; white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.8); margin-top: 1px; }
   </style>
 </head>
 <body>
@@ -124,38 +121,33 @@ const mapHTML = `
   <script>
     const map = L.map('map', { zoomControl: true }).setView([40.7282, -73.9442], 11);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap'
+      attribution: '\u00a9 OpenStreetMap'
     }).addTo(map);
 
-    const orangeIcon = L.divIcon({
-      html: '<div style="background:#F5961D;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(245,150,29,0.6);"></div>',
-      iconSize: [18, 18],
-      iconAnchor: [9, 9],
-      className: ''
-    });
+    const markers = ${JSON.stringify(markerData)};
+    markers.forEach(c => {
+      const labelHtml = c.crewLabel ? '<div class="crew-label">' + c.crewLabel + '</div>' : '';
+      const icon = L.divIcon({
+        html: '<div style="display:flex;flex-direction:column;align-items:center;">' +
+              '<div style="background:' + c.color + ';width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px ' + c.color + '88;"></div>' +
+              labelHtml + '</div>',
+        iconSize: [50, 30],
+        iconAnchor: [25, 9],
+        className: ''
+      });
 
-    const redIcon = L.divIcon({
-      html: '<div style="background:#EF4444;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 8px rgba(239,68,68,0.6);"></div>',
-      iconSize: [18, 18],
-      iconAnchor: [9, 9],
-      className: ''
-    });
-
-    const courts = ${JSON.stringify(COURTS)};
-    const claimedIds = ${JSON.stringify(Object.keys(KINGS))};
-    courts.forEach(c => {
-      const icon = claimedIds.includes(c.id) ? redIcon : orangeIcon;
       L.marker([c.lat, c.lng], { icon })
         .addTo(map)
         .on('click', () => {
           map.flyTo([c.lat, c.lng], 15, { duration: 0.8 });
-          window.ReactNativeWebView.postMessage(JSON.stringify(c));
+          window.ReactNativeWebView.postMessage(JSON.stringify({id:c.id,name:c.name,address:c.address,courts:c.courts,lat:c.lat,lng:c.lng}));
         });
     });
   </script>
 </body>
 </html>
 `;
+}
 
 // Format ms remaining as HH:MM:SS
 function formatCountdown(ms) {
@@ -181,13 +173,72 @@ export default function CourtsScreen({ user }) {
   const [visitedCourts, setVisitedCourts] = useState([]);
   const locationSubRef = useRef(null);
 
-  const king = selected ? KINGS[selected.id] : null;
-  const leaderboard = selected ? getLeaderboard(selected.id) : [];
-  const isPending = selected ? !!pendingClaims[selected.id] : false;
-  const pendingTimestamp = selected ? pendingClaims[selected.id] : null;
+  // Favorite courts
+  const [favoriteCourts, setFavoriteCourts] = useState([]);
+
+  // User's crew info (for map coloring and claim recording)
+  const [userCrewId, setUserCrewId] = useState(null);
+  const [userCrewName, setUserCrewName] = useState(null);
+
+  // Kings from Firestore — { courtId: { uid, name, initials, wins, since, claimedAt, pendingUntil } }
+  const [kings, setKings] = useState({});
+
+  // Subscribe to all court docs for real-time king data
+  useEffect(() => {
+    const unsubs = COURTS.map(court => {
+      const courtDocRef = doc(db, 'courts', court.id);
+      return onSnapshot(courtDocRef, (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setKings(prev => ({ ...prev, [court.id]: data }));
+          // Check pending claims — if pendingUntil has passed, finalize the king
+          if (data.pendingUntil && data.pendingUntil.toDate && data.pendingUntil.toDate() <= new Date() && !data.confirmed) {
+            // Finalize: mark as confirmed king
+            updateDoc(courtDocRef, { confirmed: true }).catch(() => {});
+          }
+        } else {
+          setKings(prev => {
+            const next = { ...prev };
+            delete next[court.id];
+            return next;
+          });
+        }
+      }, () => {});
+    });
+    return () => unsubs.forEach(u => u());
+  }, []);
+
+  // Load favorites and crew info from Firestore
+  useEffect(() => {
+    if (!user?.uid) return;
+    getDoc(doc(db, 'users', user.uid)).then((snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.favoriteCourts) setFavoriteCourts(data.favoriteCourts);
+        if (data.crewId) setUserCrewId(data.crewId);
+        if (data.crewName) setUserCrewName(data.crewName);
+      }
+    }).catch(() => {});
+  }, [user?.uid]);
+
+  const king = selected ? kings[selected.id] : null;
+  const leaderboard = selected ? getLeaderboard(selected.id, kings) : [];
+  const isPending = selected && king && king.pendingUntil && !king.confirmed;
+  const pendingTimestamp = isPending && king.pendingUntil?.toDate ? king.pendingUntil.toDate().getTime() : null;
   const msRemaining = pendingTimestamp
-    ? Math.max(0, pendingTimestamp + 24 * 60 * 60 * 1000 - Date.now())
+    ? Math.max(0, pendingTimestamp - Date.now())
     : 0;
+
+  // --- Load visitedCourts from Firestore on mount ---
+  useEffect(() => {
+    if (!user?.uid) return;
+    const userDocRef = doc(db, 'users', user.uid);
+    getDoc(userDocRef).then((snap) => {
+      if (snap.exists() && snap.data().visitedCourts) {
+        setVisitedCourts(snap.data().visitedCourts);
+      }
+    }).catch(() => {});
+  }, [user?.uid]);
 
   // --- Location: request permission + watch position ---
   useEffect(() => {
@@ -213,6 +264,13 @@ export default function CourtsScreen({ user }) {
                 if (dist <= 200) {
                   prevSet.add(court.id);
                   changed = true;
+                  // Persist to Firestore
+                  if (user?.uid) {
+                    updateDoc(doc(db, 'users', user.uid), {
+                      visitedCourts: arrayUnion(court.id),
+                    }).catch(() => {});
+                    awardXP(user.uid, 10, 'visit_court').catch(() => {});
+                  }
                 }
               }
             });
@@ -229,7 +287,7 @@ export default function CourtsScreen({ user }) {
         locationSubRef.current = null;
       }
     };
-  }, []);
+  }, [user?.uid]);
 
   // Start / stop the countdown interval when modal opens with a pending claim
   useEffect(() => {
@@ -249,15 +307,47 @@ export default function CourtsScreen({ user }) {
     };
   }, [selected, isPending]);
 
-  function handleClaim() {
-    if (!selected) return;
+  async function handleClaim() {
+    if (!selected || !user?.uid) return;
     const courtId = selected.id;
-    setPendingClaims(prev => ({ ...prev, [courtId]: Date.now() }));
-    setClaimSuccess(courtId);
-    setTimeout(() => {
-      setClaimSuccess(null);
-      setSelected(null);
-    }, 3000);
+    const courtDocRef = doc(db, 'courts', courtId);
+    const pendingUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const initials = user.initials || user.name.slice(0, 2).toUpperCase();
+    try {
+      const claimData = {
+        currentKing: { uid: user.uid, name: user.name, initials },
+        claimedAt: serverTimestamp(),
+        pendingUntil,
+        confirmed: false,
+        wins: 1,
+        name: user.name,
+        initials,
+      };
+      // Record crew info if user is in a crew
+      if (userCrewId) {
+        claimData.crewId = userCrewId;
+        claimData.crewName = userCrewName || '';
+      }
+      await setDoc(courtDocRef, claimData);
+      // Increment courtsClaimed on user doc
+      await updateDoc(doc(db, 'users', user.uid), {
+        courtsClaimed: increment(1),
+      }).catch(() => {});
+      // Update crew's courtsControlled count
+      if (userCrewId) {
+        updateDoc(doc(db, 'crews', userCrewId), {
+          courtsControlled: increment(1),
+        }).catch(() => {});
+      }
+      await awardXP(user.uid, 50, 'claim_court').catch(() => {});
+      setClaimSuccess(courtId);
+      setTimeout(() => {
+        setClaimSuccess(null);
+        setSelected(null);
+      }, 3000);
+    } catch (err) {
+      console.error('Claim error:', err);
+    }
   }
 
   function handleClose() {
@@ -267,7 +357,7 @@ export default function CourtsScreen({ user }) {
 
   // Derive stats for the panel
   const conqueredCourts = user
-    ? Object.entries(KINGS).filter(([, k]) => k.name === user.name)
+    ? Object.entries(kings).filter(([, k]) => k.currentKing?.uid === user.uid || k.name === user.name)
     : [];
 
   const userInitials = user
@@ -299,7 +389,7 @@ export default function CourtsScreen({ user }) {
 
       <WebView
         style={styles.map}
-        source={{ html: mapHTML }}
+        source={{ html: buildMapHTML(kings, userCrewId) }}
         onMessage={(e) => setSelected(JSON.parse(e.nativeEvent.data))}
         javaScriptEnabled
         domStorageEnabled
@@ -317,6 +407,51 @@ export default function CourtsScreen({ user }) {
               <View style={styles.tags}>
                 <View style={styles.tag}><Text style={styles.tagText}>🏓 {selected.courts} Courts</Text></View>
                 <View style={styles.tag}><Text style={styles.tagText}>☀️ Outdoor</Text></View>
+                {king && king.crewName ? (
+                  <View style={[styles.tag, { backgroundColor: 'rgba(129,140,248,0.12)' }]}>
+                    <Text style={[styles.tagText, { color: '#818CF8' }]}>⚔️ {king.crewName}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {/* Court photos placeholder */}
+              <View style={styles.photoPlaceholder}>
+                <Text style={styles.photoPlaceholderIcon}>📸</Text>
+                <Text style={styles.photoPlaceholderText}>Court photos coming soon</Text>
+              </View>
+
+              {/* Directions + Favorite row */}
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  style={styles.directionsBtn}
+                  onPress={() => {
+                    const url = Platform.OS === 'ios'
+                      ? `http://maps.apple.com/?daddr=${selected.lat},${selected.lng}`
+                      : `https://www.google.com/maps/dir/?api=1&destination=${selected.lat},${selected.lng}`;
+                    Linking.openURL(url).catch(() => {});
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.directionsBtnText}>🧭  Directions</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.favBtn, favoriteCourts.includes(selected.id) && styles.favBtnActive]}
+                  onPress={() => {
+                    if (!user?.uid) return;
+                    const isFav = favoriteCourts.includes(selected.id);
+                    const userRef = doc(db, 'users', user.uid);
+                    if (isFav) {
+                      setFavoriteCourts(prev => prev.filter(id => id !== selected.id));
+                      updateDoc(userRef, { favoriteCourts: arrayRemove(selected.id) }).catch(() => {});
+                    } else {
+                      setFavoriteCourts(prev => [...prev, selected.id]);
+                      updateDoc(userRef, { favoriteCourts: arrayUnion(selected.id) }).catch(() => {});
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.favBtnText}>{favoriteCourts.includes(selected.id) ? '❤️' : '🤍'}</Text>
+                </TouchableOpacity>
               </View>
 
               {claimSuccess === selected.id ? (
@@ -327,9 +462,7 @@ export default function CourtsScreen({ user }) {
                     Your claim is pending! If no one challenges you within 24 hours, you'll be crowned King of this Court 👑
                   </Text>
                   <Text style={styles.claimSuccessCountdown}>
-                    {formatCountdown(pendingClaims[selected.id]
-                      ? Math.max(0, pendingClaims[selected.id] + 24 * 60 * 60 * 1000 - Date.now())
-                      : 0)} remaining
+                    {formatCountdown(msRemaining)} remaining
                   </Text>
                 </View>
               ) : (
@@ -339,13 +472,13 @@ export default function CourtsScreen({ user }) {
                     <Text style={styles.kingLabel}>KING OF THE COURT</Text>
                     {king ? (
                       <View style={styles.kingCard}>
-                        <View style={[styles.kingAvatar, { backgroundColor: getAvatarColor(king.name) }]}>
-                          <Text style={styles.kingAvatarText}>{king.initials}</Text>
+                        <View style={[styles.kingAvatar, { backgroundColor: getAvatarColor(king.currentKing?.name || king.name || '') }]}>
+                          <Text style={styles.kingAvatarText}>{king.currentKing?.initials || king.initials || '??'}</Text>
                         </View>
                         <View style={styles.kingInfo}>
-                          <Text style={styles.kingName}>{king.name}</Text>
-                          <Text style={styles.kingRoleLabel}>👑 King of the Court</Text>
-                          <Text style={styles.kingStats}>{king.wins} Wins · Since {king.since}</Text>
+                          <Text style={styles.kingName}>{king.currentKing?.name || king.name}</Text>
+                          <Text style={styles.kingRoleLabel}>{isPending ? '⏳ Claim Pending' : '👑 King of the Court'}</Text>
+                          <Text style={styles.kingStats}>{king.wins || 1} Wins</Text>
                         </View>
                       </View>
                     ) : (
@@ -472,7 +605,7 @@ export default function CourtsScreen({ user }) {
                       <Text style={styles.conqueredCourtName}>
                         {court ? court.name : `Court ${courtId}`}
                       </Text>
-                      <Text style={styles.conqueredWins}>{kingData.wins}W</Text>
+                      <Text style={styles.conqueredWins}>{kingData.wins || 1}W</Text>
                     </View>
                   );
                 })}
@@ -520,6 +653,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 6,
   },
   tagText: { color: '#F5961D', fontWeight: '600', fontSize: 13 },
+
+  // Photo placeholder
+  photoPlaceholder: {
+    backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12,
+    padding: 20, alignItems: 'center', marginBottom: 16,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+    borderStyle: 'dashed',
+  },
+  photoPlaceholderIcon: { fontSize: 20, marginBottom: 4 },
+  photoPlaceholderText: { fontSize: 12, color: '#4B5563', fontWeight: '600' },
+
+  // Directions + Favorite row
+  actionRow: {
+    flexDirection: 'row', gap: 10, marginBottom: 20,
+  },
+  directionsBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(245,150,29,0.12)', borderRadius: 12,
+    paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(245,150,29,0.25)',
+  },
+  directionsBtnText: { color: '#F5961D', fontWeight: '700', fontSize: 14 },
+  favBtn: {
+    width: 48, height: 48, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  favBtnActive: {
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    borderColor: 'rgba(239,68,68,0.3)',
+  },
+  favBtnText: { fontSize: 22 },
 
   // King box — empty state
   kingBox: {

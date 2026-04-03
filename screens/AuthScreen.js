@@ -63,6 +63,7 @@ export default function AuthScreen({ onLogin }) {
         const firebaseUser = userCredential.user;
         const displayName = firebaseUser.displayName || email.split('@')[0];
         onLogin({
+          uid: firebaseUser.uid,
           name: displayName,
           email: firebaseUser.email,
           initials: getInitials(displayName, firebaseUser.email),
@@ -72,6 +73,7 @@ export default function AuthScreen({ onLogin }) {
         const firebaseUser = userCredential.user;
         await updateProfile(firebaseUser, { displayName: name.trim() });
         onLogin({
+          uid: firebaseUser.uid,
           name: name.trim(),
           email: firebaseUser.email,
           initials: getInitials(name.trim(), firebaseUser.email),

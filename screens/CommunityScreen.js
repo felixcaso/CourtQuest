@@ -1,106 +1,167 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet, View, Text, ScrollView, TouchableOpacity,
   Modal, TextInput, SafeAreaView, KeyboardAvoidingView, Platform, Image,
 } from 'react-native';
+import { db } from '../firebase';
+import {
+  collection, addDoc, onSnapshot, query, orderBy, updateDoc, doc,
+  arrayUnion, arrayRemove, serverTimestamp, increment, getDocs,
+} from 'firebase/firestore';
+import { awardXP } from '../services/xpService';
+import { checkAndAwardBadges } from '../services/badgeService';
 
-const SAMPLE_POSTS = [
-  {
-    id: '1',
-    name: 'Marcus Rivera',
-    initials: 'MR',
-    avatarColor: '#F5961D',
-    time: '2m ago',
-    text: 'Anyone down for a casual game at Central Park this afternoon around 3pm? Looking for 2 more players, all skill levels welcome!',
-    tag: 'Need Player',
-    likes: 14,
-  },
-  {
-    id: '2',
-    name: 'Sarah Kim',
-    initials: 'SK',
-    avatarColor: '#4ADE80',
-    time: '18m ago',
-    text: 'Does anyone know if the courts at Queensbridge are open today? The website is down and I can\'t find any info.',
-    tag: 'Find Court',
-    likes: 5,
-  },
-  {
-    id: '3',
-    name: 'Danny Torres',
-    initials: 'DT',
-    avatarColor: '#818CF8',
-    time: '1h ago',
-    text: 'Just got back from East River Park — courts are in great shape and barely anyone there on weekday mornings. Highly recommend!',
-    tag: 'Find Court',
-    likes: 23,
-  },
-  {
-    id: '4',
-    name: 'Priya Nair',
-    initials: 'PN',
-    avatarColor: '#F472B6',
-    time: '3h ago',
-    text: 'Intermediate player here looking for a regular Tuesday/Thursday hitting partner in Brooklyn. Prospect Park area preferred. DM me!',
-    tag: 'Need Player',
-    likes: 9,
-  },
-];
+const FILTERS = ['All Posts', 'Need Player', 'Find Court', 'Schedule Game'];
 
-const FILTERS = ['All Posts', 'Need Player', 'Find Court'];
+const AVATAR_COLORS = ['#F5961D', '#4ADE80', '#818CF8', '#F472B6', '#38BDF8'];
+function getAvatarColor(name) {
+  return AVATAR_COLORS[((name || '').charCodeAt(0) || 0) % AVATAR_COLORS.length];
+}
+
+function timeAgo(timestamp) {
+  if (!timestamp) return '';
+  const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
 
 export default function CommunityScreen({ user }) {
-  const [posts, setPosts] = useState(SAMPLE_POSTS);
+  const [posts, setPosts] = useState([]);
   const [activeFilter, setActiveFilter] = useState('All Posts');
-  const [likedIds, setLikedIds] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [newText, setNewText] = useState('');
   const [newTag, setNewTag] = useState('Need Player');
+  const [gameDate, setGameDate] = useState('');
+  const [gameTime, setGameTime] = useState('');
+  const [gameCourt, setGameCourt] = useState('');
   const [posting, setPosting] = useState(false);
+  const [expandedComments, setExpandedComments] = useState({}); // { postId: true/false }
+  const [commentTexts, setCommentTexts] = useState({}); // { postId: 'text' }
+  const [comments, setComments] = useState({}); // { postId: [comments] }
+  const [postingComment, setPostingComment] = useState(null);
+
+  const toggleComments = async (postId) => {
+    const isExpanding = !expandedComments[postId];
+    setExpandedComments(prev => ({ ...prev, [postId]: isExpanding }));
+    if (isExpanding && !comments[postId]) {
+      // Load comments
+      try {
+        const commentsQuery = query(
+          collection(db, 'posts', postId, 'comments'),
+          orderBy('timestamp', 'asc')
+        );
+        const snap = await getDocs(commentsQuery);
+        setComments(prev => ({
+          ...prev,
+          [postId]: snap.docs.map(d => ({ id: d.id, ...d.data() })),
+        }));
+      } catch (e) {
+        console.warn('Load comments error:', e);
+      }
+    }
+  };
+
+  const handleAddComment = async (postId) => {
+    const text = (commentTexts[postId] || '').trim();
+    if (!text || !user?.uid) return;
+    setPostingComment(postId);
+    try {
+      const commentData = {
+        authorUid: user.uid,
+        authorName: user.name || 'Anonymous',
+        authorInitials: user.initials || 'AN',
+        text,
+        timestamp: serverTimestamp(),
+      };
+      await addDoc(collection(db, 'posts', postId, 'comments'), commentData);
+      // Update local state
+      setComments(prev => ({
+        ...prev,
+        [postId]: [...(prev[postId] || []), { ...commentData, timestamp: new Date() }],
+      }));
+      setCommentTexts(prev => ({ ...prev, [postId]: '' }));
+    } catch (e) {
+      console.warn('Comment error:', e);
+    } finally {
+      setPostingComment(null);
+    }
+  };
+
+  // Real-time listener for posts collection
+  useEffect(() => {
+    const q = query(collection(db, 'posts'), orderBy('timestamp', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const loaded = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setPosts(loaded);
+    }, () => {});
+    return unsub;
+  }, []);
 
   const filtered = posts.filter(p => {
     if (activeFilter === 'All Posts') return true;
     return p.tag === activeFilter;
   });
 
-  const toggleLike = (id) => {
-    setLikedIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-    setPosts(prev =>
-      prev.map(p =>
-        p.id === id
-          ? { ...p, likes: likedIds.includes(id) ? p.likes - 1 : p.likes + 1 }
-          : p
-      )
-    );
+  const toggleLike = async (postId) => {
+    if (!user?.uid) return;
+    const postRef = doc(db, 'posts', postId);
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    const alreadyLiked = (post.likes || []).includes(user.uid);
+    try {
+      await updateDoc(postRef, {
+        likes: alreadyLiked ? arrayRemove(user.uid) : arrayUnion(user.uid),
+      });
+    } catch (err) {
+      console.error('Like error:', err);
+    }
   };
 
-  const handlePost = () => {
+  const handlePost = async () => {
     if (!newText.trim()) return;
     setPosting(true);
-    setTimeout(() => {
-      const initials = user
-        ? user.initials
-        : 'ME';
-      const name = user ? user.name : 'You';
-      const newPost = {
-        id: Date.now().toString(),
-        name,
-        initials,
-        avatarColor: '#F5961D',
-        photoUri: user ? user.photoUri : null,
-        time: 'just now',
+    try {
+      const initials = user ? user.initials : 'ME';
+      const authorName = user ? user.name : 'You';
+      const postData = {
+        authorUid: user?.uid || 'guest',
+        authorName,
+        authorInitials: initials,
         text: newText.trim(),
         tag: newTag,
-        likes: 0,
+        timestamp: serverTimestamp(),
+        likes: [],
       };
-      setPosts(prev => [newPost, ...prev]);
+      if (newTag === 'Schedule Game') {
+        postData.gameDate = gameDate.trim() || '';
+        postData.gameTime = gameTime.trim() || '';
+        postData.gameCourt = gameCourt.trim() || '';
+      }
+      await addDoc(collection(db, 'posts'), postData);
+      // Increment postsCount on user doc
+      if (user?.uid) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          postsCount: increment(1),
+        }).catch(() => {});
+        await awardXP(user.uid, 5, 'post').catch(() => {});
+      }
       setNewText('');
       setNewTag('Need Player');
-      setPosting(false);
+      setGameDate('');
+      setGameTime('');
+      setGameCourt('');
       setModalVisible(false);
-    }, 600);
+    } catch (err) {
+      console.error('Post error:', err);
+    } finally {
+      setPosting(false);
+    }
   };
 
   return (
@@ -150,28 +211,31 @@ export default function CommunityScreen({ user }) {
           </View>
         )}
         {filtered.map(post => {
-          const liked = likedIds.includes(post.id);
+          const likesArray = post.likes || [];
+          const liked = user?.uid ? likesArray.includes(user.uid) : false;
+          const postName = post.authorName || post.name || 'Anonymous';
+          const postInitials = post.authorInitials || post.initials || postName.slice(0, 2).toUpperCase();
           return (
             <View key={post.id} style={styles.card}>
               <View style={styles.cardHeader}>
-                {post.photoUri ? (
-                  <Image source={{ uri: post.photoUri }} style={styles.avatarPhoto} />
-                ) : (
-                  <View style={[styles.avatar, { backgroundColor: post.avatarColor }]}>
-                    <Text style={styles.avatarText}>{post.initials}</Text>
-                  </View>
-                )}
+                <View style={[styles.avatar, { backgroundColor: getAvatarColor(postName) }]}>
+                  <Text style={styles.avatarText}>{postInitials}</Text>
+                </View>
                 <View style={styles.cardMeta}>
-                  <Text style={styles.cardName}>{post.name}</Text>
-                  <Text style={styles.cardTime}>{post.time}</Text>
+                  <Text style={styles.cardName}>{postName}</Text>
+                  <Text style={styles.cardTime}>{timeAgo(post.timestamp)}</Text>
                 </View>
                 <View style={[
                   styles.tagBadge,
-                  post.tag === 'Need Player' ? styles.tagGreen : styles.tagOrange,
+                  post.tag === 'Need Player' ? styles.tagGreen
+                    : post.tag === 'Schedule Game' ? styles.tagPurple
+                    : styles.tagOrange,
                 ]}>
                   <Text style={[
                     styles.tagBadgeText,
-                    post.tag === 'Need Player' ? styles.tagGreenText : styles.tagOrangeText,
+                    post.tag === 'Need Player' ? styles.tagGreenText
+                      : post.tag === 'Schedule Game' ? styles.tagPurpleText
+                      : styles.tagOrangeText,
                   ]}>
                     {post.tag}
                   </Text>
@@ -179,6 +243,14 @@ export default function CommunityScreen({ user }) {
               </View>
 
               <Text style={styles.cardText}>{post.text}</Text>
+
+              {/* Schedule Game info */}
+              {post.tag === 'Schedule Game' && post.gameDate && (
+                <View style={styles.scheduleInfo}>
+                  <Text style={styles.scheduleInfoText}>📅 {post.gameDate}{post.gameTime ? ` at ${post.gameTime}` : ''}</Text>
+                  {post.gameCourt && <Text style={styles.scheduleInfoText}>📍 {post.gameCourt}</Text>}
+                </View>
+              )}
 
               <View style={styles.cardFooter}>
                 <TouchableOpacity
@@ -188,10 +260,58 @@ export default function CommunityScreen({ user }) {
                 >
                   <Text style={styles.likeIcon}>{liked ? '❤️' : '🤍'}</Text>
                   <Text style={[styles.likeCount, liked && styles.likeCountActive]}>
-                    {post.likes}
+                    {likesArray.length}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.commentBtn}
+                  onPress={() => toggleComments(post.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.commentIcon}>💬</Text>
+                  <Text style={styles.commentCount}>
+                    {(comments[post.id] || []).length || ''}
                   </Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Comments section */}
+              {expandedComments[post.id] && (
+                <View style={styles.commentsSection}>
+                  {(comments[post.id] || []).map((comment, cidx) => (
+                    <View key={comment.id || cidx} style={styles.commentRow}>
+                      <View style={[styles.commentAvatar, { backgroundColor: getAvatarColor(comment.authorName) }]}>
+                        <Text style={styles.commentAvatarText}>{comment.authorInitials || '??'}</Text>
+                      </View>
+                      <View style={styles.commentContent}>
+                        <Text style={styles.commentAuthor}>{comment.authorName}</Text>
+                        <Text style={styles.commentText}>{comment.text}</Text>
+                      </View>
+                    </View>
+                  ))}
+                  <View style={styles.commentInputRow}>
+                    <TextInput
+                      style={styles.commentInput}
+                      placeholder="Add a comment..."
+                      placeholderTextColor="#4B5563"
+                      value={commentTexts[post.id] || ''}
+                      onChangeText={(t) => setCommentTexts(prev => ({ ...prev, [post.id]: t }))}
+                      returnKeyType="send"
+                      onSubmitEditing={() => handleAddComment(post.id)}
+                    />
+                    <TouchableOpacity
+                      style={styles.commentSendBtn}
+                      onPress={() => handleAddComment(post.id)}
+                      disabled={postingComment === post.id || !(commentTexts[post.id] || '').trim()}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.commentSendText}>
+                        {postingComment === post.id ? '...' : '↑'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
             </View>
           );
         })}
@@ -239,7 +359,7 @@ export default function CommunityScreen({ user }) {
 
             <Text style={styles.modalLabel}>Tag</Text>
             <View style={styles.tagSelector}>
-              {['Need Player', 'Find Court'].map(t => (
+              {['Need Player', 'Find Court', 'Schedule Game'].map(t => (
                 <TouchableOpacity
                   key={t}
                   style={[styles.tagOption, newTag === t && styles.tagOptionActive]}
@@ -251,6 +371,33 @@ export default function CommunityScreen({ user }) {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* Schedule Game fields */}
+            {newTag === 'Schedule Game' && (
+              <View style={styles.scheduleFields}>
+                <TextInput
+                  style={styles.scheduleInput}
+                  placeholder="Date (e.g. Apr 5)"
+                  placeholderTextColor="#4B5563"
+                  value={gameDate}
+                  onChangeText={setGameDate}
+                />
+                <TextInput
+                  style={styles.scheduleInput}
+                  placeholder="Time (e.g. 3:00 PM)"
+                  placeholderTextColor="#4B5563"
+                  value={gameTime}
+                  onChangeText={setGameTime}
+                />
+                <TextInput
+                  style={styles.scheduleInput}
+                  placeholder="Court name"
+                  placeholderTextColor="#4B5563"
+                  value={gameCourt}
+                  onChangeText={setGameCourt}
+                />
+              </View>
+            )}
 
             <TouchableOpacity
               style={[styles.postBtn, (!newText.trim() || posting) && styles.postBtnDisabled]}
@@ -331,13 +478,56 @@ const styles = StyleSheet.create({
   tagBadgeText: { fontSize: 11, fontWeight: '700' },
   tagGreenText: { color: '#4ADE80' },
   tagOrangeText: { color: '#F5961D' },
+  tagPurple: { backgroundColor: 'rgba(129,140,248,0.12)' },
+  tagPurpleText: { color: '#818CF8' },
 
   cardText: { fontSize: 14, color: '#D1D5DB', lineHeight: 21, marginBottom: 14 },
-  cardFooter: { flexDirection: 'row', alignItems: 'center' },
+
+  // Schedule Game info
+  scheduleInfo: {
+    backgroundColor: 'rgba(129,140,248,0.08)', borderRadius: 10,
+    padding: 10, marginBottom: 12, gap: 4,
+  },
+  scheduleInfoText: { fontSize: 13, color: '#818CF8', fontWeight: '600' },
+
+  cardFooter: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   likeBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   likeIcon: { fontSize: 16 },
   likeCount: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
   likeCountActive: { color: '#F5961D' },
+  commentBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  commentIcon: { fontSize: 14 },
+  commentCount: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
+
+  // Comments
+  commentsSection: {
+    marginTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)',
+    paddingTop: 12,
+  },
+  commentRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 10,
+  },
+  commentAvatar: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  commentAvatarText: { color: '#fff', fontWeight: '800', fontSize: 10 },
+  commentContent: { flex: 1 },
+  commentAuthor: { fontSize: 12, fontWeight: '700', color: '#9CA3AF', marginBottom: 2 },
+  commentText: { fontSize: 13, color: '#D1D5DB', lineHeight: 18 },
+  commentInputRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4,
+  },
+  commentInput: {
+    flex: 1, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8, color: '#fff', fontSize: 13,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  commentSendBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#F5961D', alignItems: 'center', justifyContent: 'center',
+  },
+  commentSendText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 
   fab: {
     position: 'absolute', bottom: 28, right: 20,
@@ -368,9 +558,9 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
   modalLabel: { fontSize: 11, fontWeight: '800', color: '#6B7280', letterSpacing: 2, marginBottom: 10 },
-  tagSelector: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  tagSelector: { flexDirection: 'row', gap: 8, marginBottom: 24, flexWrap: 'wrap' },
   tagOption: {
-    flex: 1, paddingVertical: 10, borderRadius: 12,
+    paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12,
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.08)',
@@ -381,6 +571,15 @@ const styles = StyleSheet.create({
   },
   tagOptionText: { fontSize: 13, fontWeight: '700', color: '#6B7280' },
   tagOptionTextActive: { color: '#F5961D' },
+
+  // Schedule Game fields in modal
+  scheduleFields: { gap: 10, marginBottom: 16 },
+  scheduleInput: {
+    backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 10, color: '#fff', fontSize: 14,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+
   postBtn: {
     backgroundColor: '#F5961D', borderRadius: 14,
     padding: 16, alignItems: 'center',
