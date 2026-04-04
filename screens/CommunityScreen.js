@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet, View, Text, ScrollView, TouchableOpacity,
-  Modal, TextInput, SafeAreaView, KeyboardAvoidingView, Platform, Image,
+  Modal, TextInput, KeyboardAvoidingView, Platform, Image,
 } from 'react-native';
 import { db } from '../firebase';
 import {
@@ -9,7 +9,9 @@ import {
   arrayUnion, arrayRemove, serverTimestamp, increment, getDocs,
 } from 'firebase/firestore';
 import { awardXP } from '../services/xpService';
+import Constants from 'expo-constants';
 import { checkAndAwardBadges } from '../services/badgeService';
+import { sendChallenge } from '../services/challengeService';
 
 const FILTERS = ['All Posts', 'Need Player', 'Find Court', 'Schedule Game'];
 
@@ -45,6 +47,9 @@ export default function CommunityScreen({ user }) {
   const [commentTexts, setCommentTexts] = useState({}); // { postId: 'text' }
   const [comments, setComments] = useState({}); // { postId: [comments] }
   const [postingComment, setPostingComment] = useState(null);
+  const [challengeTarget, setChallengeTarget] = useState(null); // { uid, name } for court picker
+  const [challengeSending, setChallengeSending] = useState(false);
+  const [challengeSent, setChallengeSent] = useState(false);
 
   const toggleComments = async (postId) => {
     const isExpanding = !expandedComments[postId];
@@ -90,6 +95,32 @@ export default function CommunityScreen({ user }) {
       console.warn('Comment error:', e);
     } finally {
       setPostingComment(null);
+    }
+  };
+
+  const QUICK_COURTS = [
+    { id: '1', name: 'Central Park Pickleball' },
+    { id: '2', name: 'Queensbridge Park' },
+    { id: '5', name: 'Prospect Park Pickleball' },
+    { id: '6', name: 'McCarren Park' },
+    { id: '11', name: 'Randalls Island' },
+    { id: '12', name: 'Astoria Park' },
+  ];
+
+  const handleSendChallenge = async (courtId, courtName) => {
+    if (!user?.uid || !challengeTarget) return;
+    setChallengeSending(true);
+    try {
+      await sendChallenge(user.uid, user.name, challengeTarget.uid, challengeTarget.name, courtId, courtName);
+      setChallengeSent(true);
+      setTimeout(() => {
+        setChallengeSent(false);
+        setChallengeTarget(null);
+      }, 2000);
+    } catch (e) {
+      console.warn('Challenge error:', e);
+    } finally {
+      setChallengeSending(false);
     }
   };
 
@@ -166,7 +197,7 @@ export default function CommunityScreen({ user }) {
 
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.safeHeader}>
+      <View style={styles.headerWrap}>
         <View style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>Community</Text>
@@ -196,7 +227,7 @@ export default function CommunityScreen({ user }) {
             </TouchableOpacity>
           ))}
         </ScrollView>
-      </SafeAreaView>
+      </View>
 
       <ScrollView
         style={styles.feed}
@@ -273,6 +304,16 @@ export default function CommunityScreen({ user }) {
                     {(comments[post.id] || []).length || ''}
                   </Text>
                 </TouchableOpacity>
+                {post.authorUid && post.authorUid !== user?.uid && post.authorUid !== 'guest' && (
+                  <TouchableOpacity
+                    style={styles.challengePostBtn}
+                    onPress={() => setChallengeTarget({ uid: post.authorUid, name: post.authorName || 'Player' })}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.challengePostIcon}>⚔️</Text>
+                    <Text style={styles.challengePostText}>Challenge</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               {/* Comments section */}
@@ -410,16 +451,62 @@ export default function CommunityScreen({ user }) {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Challenge Court Picker Modal */}
+      <Modal visible={!!challengeTarget} transparent animationType="slide" onRequestClose={() => setChallengeTarget(null)}>
+        <KeyboardAvoidingView style={styles.modalWrapper} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setChallengeTarget(null)} />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            {challengeSent ? (
+              <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                <Text style={{ fontSize: 40, marginBottom: 10 }}>⚔️</Text>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: '#F5961D', marginBottom: 4 }}>Challenge Sent!</Text>
+                <Text style={{ fontSize: 14, color: '#9CA3AF' }}>Waiting for {challengeTarget?.name} to respond</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>Challenge {challengeTarget?.name}</Text>
+                <Text style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 16 }}>Pick a court to meet up at:</Text>
+                {QUICK_COURTS.map(court => (
+                  <TouchableOpacity
+                    key={court.id}
+                    style={styles.courtPickerItem}
+                    onPress={() => handleSendChallenge(court.id, court.name)}
+                    disabled={challengeSending}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.courtPickerIcon}>📍</Text>
+                    <Text style={styles.courtPickerText}>{court.name}</Text>
+                    <Text style={styles.courtPickerArrow}>›</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={styles.courtPickerItem}
+                  onPress={() => handleSendChallenge(null, 'TBD - Pick a court later')}
+                  disabled={challengeSending}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.courtPickerIcon}>🤷</Text>
+                  <Text style={styles.courtPickerText}>Decide Later</Text>
+                  <Text style={styles.courtPickerArrow}>›</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#080F1E' },
-  safeHeader: { backgroundColor: '#080F1E' },
+  headerWrap: { backgroundColor: '#080F1E' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 14,
+    paddingTop: Constants.statusBarHeight + 10,
     borderBottomWidth: 1, borderBottomColor: 'rgba(245,150,29,0.15)',
   },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff' },
@@ -586,4 +673,20 @@ const styles = StyleSheet.create({
   },
   postBtnDisabled: { opacity: 0.4 },
   postBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+
+  // Challenge from community
+  challengePostBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto' },
+  challengePostIcon: { fontSize: 13 },
+  challengePostText: { fontSize: 12, fontWeight: '700', color: '#F5961D' },
+
+  // Court picker
+  courtPickerItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12,
+    padding: 14, marginBottom: 8,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  courtPickerIcon: { fontSize: 14 },
+  courtPickerText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#D1D5DB' },
+  courtPickerArrow: { fontSize: 18, color: '#6B7280', fontWeight: '300' },
 });

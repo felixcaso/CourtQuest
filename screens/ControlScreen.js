@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
-  StyleSheet, View, Text, SafeAreaView,
+  StyleSheet, View, Text,
   TouchableOpacity, ScrollView,
 } from 'react-native';
+import Constants from 'expo-constants';
 
 const DEFAULT_PRESETS = {
   dink:  { speed: 20, spin: 10,  frequency: 5 },
@@ -82,8 +83,7 @@ export default function ControlScreen() {
 
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.safeHeader}>
-        <View style={styles.header}>
+      <View style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>Machine Control</Text>
             <Text style={[styles.headerSub, connected && styles.headerSubConnected]}>
@@ -99,7 +99,6 @@ export default function ControlScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
@@ -204,10 +203,11 @@ export default function ControlScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#080F1E' },
-  safeHeader: { backgroundColor: '#080F1E' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 14,
+    paddingTop: Constants.statusBarHeight + 10,
+    backgroundColor: '#080F1E',
     borderBottomWidth: 1, borderBottomColor: 'rgba(245,150,29,0.15)',
   },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff' },

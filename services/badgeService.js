@@ -89,6 +89,27 @@ const BADGE_DEFINITIONS = [
     description: 'Refer 3 friends',
     check: (data) => (data.referralCount || 0) >= 3,
   },
+  {
+    id: 'first_challenge_win',
+    name: 'First Blood',
+    emoji: '🩸',
+    description: 'Win your first challenge',
+    check: (data) => (data.challengeWins || 0) >= 1,
+  },
+  {
+    id: 'champion',
+    name: 'Champion',
+    emoji: '🏆',
+    description: 'Win 10 challenges',
+    check: (data) => (data.challengeWins || 0) >= 10,
+  },
+  {
+    id: 'gladiator',
+    name: 'Gladiator',
+    emoji: '🗡️',
+    description: 'Complete 5 challenges (win or lose)',
+    check: (data) => ((data.challengeWins || 0) + (data.challengeLosses || 0)) >= 5,
+  },
 ];
 
 /**

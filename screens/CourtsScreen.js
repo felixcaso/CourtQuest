@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, View, Text, Modal, Image,
-  TouchableOpacity, SafeAreaView, ScrollView,
+  TouchableOpacity, ScrollView,
   Linking, Platform,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as Location from 'expo-location';
+import Constants from 'expo-constants';
 import { db } from '../firebase';
 import {
   doc, getDoc, setDoc, onSnapshot, updateDoc, deleteDoc,
   collection, serverTimestamp, arrayUnion, arrayRemove, increment,
 } from 'firebase/firestore';
 import { awardXP } from '../services/xpService';
+import { sendChallenge } from '../services/challengeService';
 
 const COURTS = [
   { id: '1', name: 'Central Park Pickleball', address: 'Central Park, NY 10024', courts: 4, lat: 40.7812, lng: -73.9665 },
@@ -168,6 +170,8 @@ export default function CourtsScreen({ user }) {
 
   // Stats panel
   const [statsVisible, setStatsVisible] = useState(false);
+  const [challengeSending, setChallengeSending] = useState(false);
+  const [challengeSent, setChallengeSent] = useState(null); // courtId
 
   // Courts Visited — Set stored as plain object (id -> true) for state
   const [visitedCourts, setVisitedCourts] = useState([]);
@@ -179,6 +183,7 @@ export default function CourtsScreen({ user }) {
   // User's crew info (for map coloring and claim recording)
   const [userCrewId, setUserCrewId] = useState(null);
   const [userCrewName, setUserCrewName] = useState(null);
+  const [challengeWins, setChallengeWins] = useState(0);
 
   // Kings from Firestore — { courtId: { uid, name, initials, wins, since, claimedAt, pendingUntil } }
   const [kings, setKings] = useState({});
@@ -217,6 +222,7 @@ export default function CourtsScreen({ user }) {
         if (data.favoriteCourts) setFavoriteCourts(data.favoriteCourts);
         if (data.crewId) setUserCrewId(data.crewId);
         if (data.crewName) setUserCrewName(data.crewName);
+        if (data.challengeWins) setChallengeWins(data.challengeWins);
       }
     }).catch(() => {});
   }, [user?.uid]);
@@ -352,7 +358,25 @@ export default function CourtsScreen({ user }) {
 
   function handleClose() {
     setClaimSuccess(null);
+    setChallengeSent(null);
     setSelected(null);
+  }
+
+  async function handleChallengeKing() {
+    if (!selected || !user?.uid || !king) return;
+    const kingUid = king.currentKing?.uid;
+    const kingName = king.currentKing?.name || king.name;
+    if (!kingUid || kingUid === user.uid) return;
+    setChallengeSending(true);
+    try {
+      await sendChallenge(user.uid, user.name, kingUid, kingName, selected.id, selected.name);
+      setChallengeSent(selected.id);
+      setTimeout(() => setChallengeSent(null), 3000);
+    } catch (e) {
+      console.warn('Challenge error:', e);
+    } finally {
+      setChallengeSending(false);
+    }
   }
 
   // Derive stats for the panel
@@ -368,8 +392,7 @@ export default function CourtsScreen({ user }) {
 
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.safeHeader}>
-        <View style={styles.header}>
+      <View style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>CourtQuest</Text>
             <Text style={styles.headerSub}>{COURTS.length} courts near NYC</Text>
@@ -385,7 +408,6 @@ export default function CourtsScreen({ user }) {
             />
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
 
       <WebView
         style={styles.map}
@@ -487,7 +509,14 @@ export default function CourtsScreen({ user }) {
                   </View>
 
                   {/* Action button / pending claim state */}
-                  {isPending ? (
+                  {challengeSent === selected.id ? (
+                    <View style={styles.claimSuccessBox}>
+                      <Text style={styles.claimSuccessTitle}>⚔️ Challenge Sent!</Text>
+                      <Text style={styles.claimSuccessMsg}>
+                        Your challenge has been sent to {king?.currentKing?.name || king?.name || 'the King'}. You'll be notified when they respond.
+                      </Text>
+                    </View>
+                  ) : isPending ? (
                     <View style={styles.pendingBox}>
                       <View style={styles.pendingBadge}>
                         <Text style={styles.pendingBadgeText}>⏳ Claim Pending</Text>
@@ -498,14 +527,22 @@ export default function CourtsScreen({ user }) {
                       <Text style={styles.pendingMsg}>
                         A claim is pending. Challenge before time runs out!
                       </Text>
-                      <TouchableOpacity style={styles.challengeBtn} onPress={() => setSelected(null)}>
-                        <Text style={styles.challengeBtnText}>⚔️  Challenge Claim</Text>
-                      </TouchableOpacity>
+                      {king?.currentKing?.uid !== user?.uid && (
+                        <TouchableOpacity style={styles.challengeBtn} onPress={handleChallengeKing} disabled={challengeSending}>
+                          <Text style={styles.challengeBtnText}>{challengeSending ? '...' : '⚔️  Challenge Claim'}</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ) : king ? (
-                    <TouchableOpacity style={styles.challengeBtn} onPress={() => setSelected(null)}>
-                      <Text style={styles.challengeBtnText}>⚔️  Challenge King</Text>
-                    </TouchableOpacity>
+                    king.currentKing?.uid !== user?.uid ? (
+                      <TouchableOpacity style={styles.challengeBtn} onPress={handleChallengeKing} disabled={challengeSending}>
+                        <Text style={styles.challengeBtnText}>{challengeSending ? '...' : '⚔️  Challenge the King'}</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={[styles.pendingBox, { borderColor: 'rgba(74,222,128,0.3)' }]}>
+                        <Text style={[styles.pendingBadgeText, { color: '#4ADE80' }]}>You are the King!</Text>
+                      </View>
+                    )
                   ) : (
                     <TouchableOpacity style={styles.claimBtn} onPress={handleClaim}>
                       <Text style={styles.claimBtnText}>👑  Claim This Court</Text>
@@ -589,7 +626,7 @@ export default function CourtsScreen({ user }) {
                 <Text style={styles.statCardLabel}>Courts Visited</Text>
               </View>
               <View style={styles.statCard}>
-                <Text style={styles.statCardValue}>0</Text>
+                <Text style={styles.statCardValue}>{challengeWins}</Text>
                 <Text style={styles.statCardLabel}>Challenges Won</Text>
               </View>
             </View>
@@ -620,10 +657,11 @@ export default function CourtsScreen({ user }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#080F1E' },
-  safeHeader: { backgroundColor: '#080F1E' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingVertical: 14,
+    paddingTop: Constants.statusBarHeight + 10,
+    backgroundColor: '#080F1E',
     borderBottomWidth: 1, borderBottomColor: 'rgba(245,150,29,0.15)',
   },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff' },

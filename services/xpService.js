@@ -43,6 +43,8 @@ export async function awardXP(uid, amount, reason) {
       visit_court: 'visit_court',
       post: 'post',
       video_analysis: 'video_analysis',
+      challenge_win: 'challenge_win',
+      challenge_loss: 'challenge_complete',
     };
     if (actionMap[reason]) {
       updateMissionProgress(uid, actionMap[reason]).catch(() => {});

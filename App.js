@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, StatusBar, SafeAreaView, Image, ScrollView, Share } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, StatusBar, Platform, Image, ScrollView, Share } from 'react-native';
+import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import CourtsScreen from './screens/CourtsScreen';
 import ControlScreen from './screens/ControlScreen';
@@ -10,11 +11,13 @@ import OnboardingScreen from './screens/OnboardingScreen';
 import LeaderboardScreen from './screens/LeaderboardScreen';
 import CrewScreen from './screens/CrewScreen';
 import MissionsScreen from './screens/MissionsScreen';
+import ChallengeScreen from './screens/ChallengeScreen';
 import { auth, db, storage } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { checkAndUpdateStreak } from './services/streakService';
+import { getPendingChallengeCount } from './services/challengeService';
 import { setupPushNotifications } from './services/pushNotificationService';
 import { generateReferralCode } from './services/referralService';
 
@@ -45,6 +48,12 @@ function ProfileScreen({ user, onSignOut, onPhotoChange, onNavigate }) {
     referralCode: null, referralCount: 0,
   });
   const [showProModal, setShowProModal] = useState(false);
+  const [pendingChallenges, setPendingChallenges] = useState(0);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    getPendingChallengeCount(user.uid).then(count => setPendingChallenges(count)).catch(() => {});
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -104,11 +113,9 @@ function ProfileScreen({ user, onSignOut, onPhotoChange, onNavigate }) {
 
   return (
     <View style={profileStyles.container}>
-      <SafeAreaView style={profileStyles.safe}>
-        <View style={profileStyles.header}>
-          <Text style={profileStyles.headerTitle}>Profile</Text>
-        </View>
-      </SafeAreaView>
+      <View style={profileStyles.header}>
+        <Text style={profileStyles.headerTitle}>Profile</Text>
+      </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={profileStyles.scrollBody} showsVerticalScrollIndicator={false}>
         <TouchableOpacity onPress={handlePickPhoto} activeOpacity={0.85} style={profileStyles.avatarWrapper}>
@@ -217,6 +224,16 @@ function ProfileScreen({ user, onSignOut, onPhotoChange, onNavigate }) {
             <Text style={profileStyles.actionBtnText}>Missions</Text>
             <Text style={profileStyles.actionBtnArrow}>›</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={profileStyles.actionBtn} onPress={() => onNavigate && onNavigate('challenges')} activeOpacity={0.8}>
+            <Text style={profileStyles.actionBtnIcon}>⚔️</Text>
+            <Text style={profileStyles.actionBtnText}>Challenges {pendingChallenges > 0 ? `(${pendingChallenges})` : ''}</Text>
+            {pendingChallenges > 0 && (
+              <View style={profileStyles.challengeBadge}>
+                <Text style={profileStyles.challengeBadgeText}>{pendingChallenges}</Text>
+              </View>
+            )}
+            <Text style={profileStyles.actionBtnArrow}>›</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={profileStyles.actionBtn} onPress={handleShareReferral} activeOpacity={0.8}>
             <Text style={profileStyles.actionBtnIcon}>🎁</Text>
             <Text style={profileStyles.actionBtnText}>Invite Friends {profileStats.referralCount > 0 ? `(${profileStats.referralCount})` : ''}</Text>
@@ -270,10 +287,11 @@ function ProfileScreen({ user, onSignOut, onPhotoChange, onNavigate }) {
 
 const profileStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#080F1E' },
-  safe: { backgroundColor: '#080F1E' },
   header: {
-    paddingHorizontal: 20, paddingVertical: 14,
+    paddingTop: Constants.statusBarHeight + 10,
+    paddingHorizontal: 20, paddingBottom: 14,
     borderBottomWidth: 1, borderBottomColor: 'rgba(245,150,29,0.15)',
+    backgroundColor: '#080F1E',
   },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff' },
   scrollBody: { alignItems: 'center', paddingTop: 32, paddingHorizontal: 28, paddingBottom: 20 },
@@ -369,6 +387,13 @@ const profileStyles = StyleSheet.create({
     borderColor: 'rgba(245,150,29,0.3)',
   },
   proBtnText: { color: '#F5961D', fontWeight: '800', fontSize: 16 },
+
+  challengeBadge: {
+    backgroundColor: '#EF4444', borderRadius: 10,
+    minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 6, marginRight: 4,
+  },
+  challengeBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
 
   signOutBtn: {
     width: '100%', backgroundColor: 'rgba(255,255,255,0.06)',
@@ -519,6 +544,14 @@ export default function App() {
       <View style={styles.root}>
         <StatusBar barStyle="light-content" />
         <MissionsScreen user={user} onBack={() => setSubScreen(null)} />
+      </View>
+    );
+  }
+  if (subScreen === 'challenges') {
+    return (
+      <View style={styles.root}>
+        <StatusBar barStyle="light-content" />
+        <ChallengeScreen user={user} onBack={() => setSubScreen(null)} />
       </View>
     );
   }

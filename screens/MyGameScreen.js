@@ -6,7 +6,6 @@ import {
   StyleSheet,
   View,
   Text,
-  SafeAreaView,
   TouchableOpacity,
   ScrollView,
   Animated,
@@ -29,6 +28,7 @@ import {
   increment,
 } from 'firebase/firestore';
 import { awardXP } from '../services/xpService';
+import Constants from 'expo-constants';
 
 const GEMINI_API_KEY = 'AIzaSyC4CG71e0ALP5ZtaccMJVT-wtDXSFKNMRM';
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -451,11 +451,9 @@ export default function MyGameScreen({ user }) {
   if (screenState === 'analyzing') {
     return (
       <View style={styles.container}>
-        <SafeAreaView style={styles.safeHeader}>
-          <View style={styles.header}>
+        <View style={styles.header}>
             <Text style={styles.headerTitle}>My Game</Text>
           </View>
-        </SafeAreaView>
         <AnalyzingOverlay progressText={progressText} />
       </View>
     );
@@ -469,11 +467,9 @@ export default function MyGameScreen({ user }) {
 
     return (
       <View style={styles.container}>
-        <SafeAreaView style={styles.safeHeader}>
-          <View style={styles.header}>
+        <View style={styles.header}>
             <Text style={styles.headerTitle}>My Game</Text>
           </View>
-        </SafeAreaView>
 
         <ScrollView
           style={styles.scroll}
@@ -551,11 +547,9 @@ export default function MyGameScreen({ user }) {
   // ── IDLE STATE ────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.safeHeader}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>My Game</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.header}>
+            <Text style={styles.headerTitle}>My Game</Text>
+          </View>
 
       <ScrollView
         style={styles.scroll}
@@ -610,10 +604,11 @@ export default function MyGameScreen({ user }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#080F1E' },
-  safeHeader: { backgroundColor: '#080F1E' },
   header: {
     paddingHorizontal: 20,
     paddingVertical: 14,
+    paddingTop: Constants.statusBarHeight + 10,
+    backgroundColor: '#080F1E',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(245,150,29,0.15)',
   },

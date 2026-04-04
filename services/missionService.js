@@ -53,6 +53,24 @@ const MISSION_TEMPLATES = [
     icon: '🗺️',
     trackingField: 'courtsVisitedToday',
   },
+  {
+    id: 'win_challenge',
+    title: 'Victor',
+    description: 'Win a challenge today',
+    xpReward: 30,
+    target: 1,
+    icon: '🏆',
+    trackingField: 'challengeWinsToday',
+  },
+  {
+    id: 'complete_challenge',
+    title: 'Competitor',
+    description: 'Complete a challenge today',
+    xpReward: 15,
+    target: 1,
+    icon: '⚔️',
+    trackingField: 'challengesCompletedToday',
+  },
 ];
 
 /**
@@ -136,6 +154,8 @@ export async function updateMissionProgress(uid, actionType) {
     post: 'postsToday',
     claim_court: 'claimsToday',
     video_analysis: 'analysesToday',
+    challenge_win: 'challengeWinsToday',
+    challenge_complete: 'challengesCompletedToday',
   };
 
   const trackingField = fieldMap[actionType];

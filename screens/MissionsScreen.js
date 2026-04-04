@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
-  StyleSheet, View, Text, TouchableOpacity, SafeAreaView, ScrollView,
+  StyleSheet, View, Text, TouchableOpacity, ScrollView,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { getTodayMissions, claimMissionReward } from '../services/missionService';
 import { checkAndAwardBadges } from '../services/badgeService';
 
@@ -50,15 +51,13 @@ export default function MissionsScreen({ user, onBack }) {
 
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
+      <View style={styles.header}>
           <TouchableOpacity onPress={onBack} style={styles.backBtn}>
             <Text style={styles.backBtnText}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Daily Missions</Text>
           <View style={{ width: 60 }} />
         </View>
-      </SafeAreaView>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollPad} showsVerticalScrollIndicator={false}>
         {/* Progress summary */}
@@ -150,10 +149,11 @@ export default function MissionsScreen({ user, onBack }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#080F1E' },
-  safe: { backgroundColor: '#080F1E' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 14,
+    paddingTop: Constants.statusBarHeight + 10,
+    backgroundColor: '#080F1E',
     borderBottomWidth: 1, borderBottomColor: 'rgba(245,150,29,0.15)',
   },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#fff' },

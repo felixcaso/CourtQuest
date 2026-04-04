@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
-  StyleSheet, View, Text, TouchableOpacity, SafeAreaView, ScrollView,
+  StyleSheet, View, Text, TouchableOpacity, ScrollView,
   TextInput, Alert, Share,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { createCrew, joinCrew, leaveCrew, getCrewDetails, getCrewMembers } from '../services/crewService';
 import { db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -114,15 +115,13 @@ export default function CrewScreen({ user, onBack }) {
   if (loading) {
     return (
       <View style={styles.container}>
-        <SafeAreaView style={styles.safe}>
-          <View style={styles.header}>
+        <View style={styles.header}>
             <TouchableOpacity onPress={onBack} style={styles.backBtn}>
               <Text style={styles.backBtnText}>← Back</Text>
             </TouchableOpacity>
             <Text style={styles.headerTitle}>My Crew</Text>
             <View style={{ width: 60 }} />
           </View>
-        </SafeAreaView>
         <View style={styles.centered}>
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
@@ -134,15 +133,13 @@ export default function CrewScreen({ user, onBack }) {
   if (!crewId) {
     return (
       <View style={styles.container}>
-        <SafeAreaView style={styles.safe}>
-          <View style={styles.header}>
+        <View style={styles.header}>
             <TouchableOpacity onPress={onBack} style={styles.backBtn}>
               <Text style={styles.backBtnText}>← Back</Text>
             </TouchableOpacity>
             <Text style={styles.headerTitle}>My Crew</Text>
             <View style={{ width: 60 }} />
           </View>
-        </SafeAreaView>
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollPad} showsVerticalScrollIndicator={false}>
           <View style={styles.emptyCard}>
@@ -221,15 +218,13 @@ export default function CrewScreen({ user, onBack }) {
   // Has crew — show details
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-            <Text style={styles.backBtnText}>← Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>My Crew</Text>
-          <View style={{ width: 60 }} />
-        </View>
-      </SafeAreaView>
+      <View style={styles.header}>
+            <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+              <Text style={styles.backBtnText}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>My Crew</Text>
+            <View style={{ width: 60 }} />
+          </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollPad} showsVerticalScrollIndicator={false}>
         {/* Crew header */}
@@ -292,10 +287,11 @@ export default function CrewScreen({ user, onBack }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#080F1E' },
-  safe: { backgroundColor: '#080F1E' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 14,
+    paddingTop: Constants.statusBarHeight + 10,
+    backgroundColor: '#080F1E',
     borderBottomWidth: 1, borderBottomColor: 'rgba(245,150,29,0.15)',
   },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#fff' },

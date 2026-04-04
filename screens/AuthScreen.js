@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
   StyleSheet, View, Text, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ScrollView, SafeAreaView, Image,
+  KeyboardAvoidingView, Platform, ScrollView, Image,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { auth } from '../firebase';
 import {
   signInWithEmailAndPassword,
@@ -98,7 +99,7 @@ export default function AuthScreen({ onLogin }) {
 
   return (
     <View style={styles.root}>
-      <SafeAreaView style={styles.safe}>
+      <View style={styles.safe}>
         <KeyboardAvoidingView
           style={styles.kav}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -214,7 +215,7 @@ export default function AuthScreen({ onLogin }) {
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }
@@ -226,6 +227,7 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1, justifyContent: 'center',
     paddingHorizontal: 28, paddingVertical: 48,
+    paddingTop: Constants.statusBarHeight + 10,
   },
 
   logoArea: { alignItems: 'center', marginBottom: 44 },

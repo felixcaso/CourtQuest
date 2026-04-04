@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
-  StyleSheet, View, Text, TouchableOpacity, SafeAreaView, ScrollView, Image,
+  StyleSheet, View, Text, TouchableOpacity, ScrollView, Image,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 
@@ -82,7 +83,7 @@ export default function OnboardingScreen({ user, onComplete }) {
   if (step === 0) {
     return (
       <View style={styles.container}>
-        <SafeAreaView style={styles.safe}>
+        <View style={styles.safe}>
           <ScrollView contentContainerStyle={styles.scrollCenter} showsVerticalScrollIndicator={false}>
             <View style={styles.welcomeIconWrap}>
               <Text style={styles.welcomeIcon}>🏓</Text>
@@ -95,7 +96,7 @@ export default function OnboardingScreen({ user, onComplete }) {
               <Text style={styles.primaryBtnText}>Get Started</Text>
             </TouchableOpacity>
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </View>
     );
   }
@@ -104,7 +105,7 @@ export default function OnboardingScreen({ user, onComplete }) {
   if (step === 1) {
     return (
       <View style={styles.container}>
-        <SafeAreaView style={styles.safe}>
+        <View style={styles.safe}>
           <ScrollView contentContainerStyle={styles.scrollPad} showsVerticalScrollIndicator={false}>
             <Text style={styles.stepLabel}>STEP 1 OF 3</Text>
             <Text style={styles.stepTitle}>Choose Your Allegiance</Text>
@@ -142,7 +143,7 @@ export default function OnboardingScreen({ user, onComplete }) {
               <Text style={styles.primaryBtnText}>Continue</Text>
             </TouchableOpacity>
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </View>
     );
   }
@@ -151,7 +152,7 @@ export default function OnboardingScreen({ user, onComplete }) {
   if (step === 2) {
     return (
       <View style={styles.container}>
-        <SafeAreaView style={styles.safe}>
+        <View style={styles.safe}>
           <ScrollView contentContainerStyle={styles.scrollPad} showsVerticalScrollIndicator={false}>
             <Text style={styles.stepLabel}>STEP 2 OF 3</Text>
             <Text style={styles.stepTitle}>Your Skill Level</Text>
@@ -184,7 +185,7 @@ export default function OnboardingScreen({ user, onComplete }) {
               <Text style={styles.primaryBtnText}>Continue</Text>
             </TouchableOpacity>
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </View>
     );
   }
@@ -193,7 +194,7 @@ export default function OnboardingScreen({ user, onComplete }) {
   if (step === 3) {
     return (
       <View style={styles.container}>
-        <SafeAreaView style={styles.safe}>
+        <View style={styles.safe}>
           <ScrollView contentContainerStyle={styles.scrollPad} showsVerticalScrollIndicator={false}>
             <Text style={styles.stepLabel}>STEP 3 OF 3</Text>
             <Text style={styles.stepTitle}>How CourtQuest Works</Text>
@@ -221,7 +222,7 @@ export default function OnboardingScreen({ user, onComplete }) {
               </Text>
             </TouchableOpacity>
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </View>
     );
   }
@@ -235,9 +236,11 @@ const styles = StyleSheet.create({
   scrollCenter: {
     flexGrow: 1, justifyContent: 'center', alignItems: 'center',
     paddingHorizontal: 28, paddingVertical: 48,
+    paddingTop: Constants.statusBarHeight + 10,
   },
   scrollPad: {
     paddingHorizontal: 24, paddingVertical: 32, paddingBottom: 60,
+    paddingTop: Constants.statusBarHeight + 10,
   },
 
   // Welcome
